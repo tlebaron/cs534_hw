@@ -10,6 +10,11 @@ def getNodeIndex(graph, s_node):
     graph.append([s_node])
     return index
 
+def getNodeDistance(graph, s_node, goal):
+    if s_node == goal:
+	return 0
+    return graph[getNodeIndex(graph, s_node)][1]
+
 def addEdge(graph, node1, node2, cost):
     graph[getNodeIndex(graph, node1)].insert(1,[node2, cost])
     graph[getNodeIndex(graph, node2)].insert(1,[node1, cost])
@@ -33,12 +38,12 @@ def createGraph(f):
     graph = []
     for line in path_list:
 	[node1, node2, cost] = line.split()
-	cost = int(cost)
+	cost = float(cost)
 	addEdge(graph, node1, node2, cost)
 
     for line in goal_dist_list:
 	node = line.split()[0]
-	distance = int(line.split()[1])
+	distance = float(line.split()[1])
 	graph[getNodeIndex(graph, node)].insert(1,distance)
     for index in range(0, len(graph)):
 	graph[index][2:] = sorted(graph[index][2:], key=sortGetNodeIndex)
@@ -131,12 +136,130 @@ def breadthFirstSearch(graph, source, goal):
     return -1
 
 
+def printQueueCost(queue):
+    string = "["
+    for path in queue:
+	string += str(path[0]) + "<"
+	for node in path[1:]:
+	    string += node+','
+	string = string[:-1]
+	string +="> "
+    return string[:-1]+"]"
 
-f = open("input.txt", "r")
+
+def uniformCostSearch(graph, source, goal):
+    queue = [[0,source]]
+
+    while len(queue) > 0:
+	print "\t{0}\t\t\t{1}".format(queue[0][1], printQueueCost(queue))
+	if queue[0][1] == goal:
+	    print "\tgoal reached!"
+	    return queue[0]
+	else:
+	    path_to_explore = queue[0][:]
+	    del queue[0]
+	    children_list = getConnectedNodes(graph, path_to_explore[1])
+	    for child in children_list:
+		if child[0] not in path_to_explore:
+		    new_path = path_to_explore[:]
+		    new_path.insert(1,child[0])
+		    new_path[0] += child[1]
+
+		    queue.append(new_path)
+		    queue = sorted(queue, key=sortGetNodeIndex)
+	
+    return -1
+
+def greedySearch(graph, source, goal):
+    queue = [[getNodeDistance(graph, source, goal), source]]
+
+    while len(queue) > 0:
+	print "\t{0}\t\t\t{1}".format(queue[0][1], printQueueCost(queue))
+	if queue[0][1] == goal:
+	    print "\tgoal reached!"
+	    return queue[0]
+	else:
+	    path_to_explore = queue[0][:]
+	    del queue[0]
+	    children_list = getConnectedNodes(graph, path_to_explore[1])
+	    for child in children_list:
+		if child[0] not in path_to_explore:
+		    new_path = path_to_explore[:]
+		    new_path.insert(1,child[0])
+		    new_path[0] = getNodeDistance(graph, child[0], goal)
+
+		    queue.append(new_path)
+		    queue = sorted(queue, key=sortGetNodeIndex)
+	
+    return -1
+
+
+def aStarSearch(graph, source, goal):
+    queue = [[getNodeDistance(graph, source, goal), source]]
+
+    while len(queue) > 0:
+	print "\t{0}\t\t\t{1}".format(queue[0][1], printQueueCost(queue))
+	if queue[0][1] == goal:
+	    print "\tgoal reached!"
+	    return queue[0]
+	else:
+	    path_to_explore = queue[0][:]
+	    del queue[0]
+	    children_list = getConnectedNodes(graph, path_to_explore[1])
+	    for child in children_list:
+		inOtherPath = False
+		if child[0] not in path_to_explore:
+		    for inc_path in queue:
+			if child[0] in inc_path:
+			    inOtherPath = True
+		    if inOtherPath:
+			continue
+		    new_path = path_to_explore[:]
+		    new_path.insert(1,child[0])
+		    new_path[0] -= getNodeDistance(graph, path_to_explore[1], goal)
+		    new_path[0] += child[1] + getNodeDistance(graph, child[0], goal)
+
+		    queue.append(new_path)
+		    queue = sorted(queue, key=sortGetNodeIndex)
+	
+    return -1
+
+
+def beamSearch(graph, source, goal, limit):
+    queue = [[getNodeDistance(graph, source, goal), source]]
+
+    while len(queue) > 0:
+	print "\t{0}\t\t\t{1}".format(queue[0][1], printQueueCost(queue))
+
+	s_queue = sorted(queue, key = sortGetNodeIndex)[:2]
+	if len(queue)>2 and queue.index(s_queue[0]) > queue.index(s_queue[1]):
+	    queue = s_queue[::-1]
+	else:
+	    queue = s_queue[:]
+
+	if queue[0][1] == goal:
+	    print "\tgoal reached!"
+	    return queue[0]
+	else:
+	    path_to_explore = queue[0][:]
+	    del queue[0]
+	    children_list = getConnectedNodes(graph, path_to_explore[1])
+	    for child in children_list:
+		if child[0] not in path_to_explore:
+		    new_path = path_to_explore[:]
+		    new_path.insert(1,child[0])
+		    new_path[0] = getNodeDistance(graph, child[0], goal)
+
+		    queue.append(new_path)
+	
+    return -1
+
+
+f = open("input2.txt", "r")
 graph = createGraph(f)
 
 
-
+'''
 print "\t## Depth first search ##"
 print "\tExpanded\t\tQueue"
 depthFirstSearch(graph, 'S', 'G')
@@ -152,4 +275,21 @@ depthLimitSearch(graph, 'S', 'G', 2)
 print "\t## Iterative search ##"
 print "\tExpanded\t\tQueue"
 iterativeDeepeningSearch(graph, 'S', 'G')
+
+print "\t## Uniform search ##"
+print "\tExpanded\t\tQueue"
+uniformCostSearch(graph, 'S', 'G')
+
+print "\t## Greedy search ##"
+print "\tExpanded\t\tQueue"
+greedySearch(graph, 'S', 'G')
+
+print "\t## A* search ##"
+print "\tExpanded\t\tQueue"
+aStarSearch(graph, 'S', 'G')
+'''
+
+print "\t## Beam search ##"
+print "\tExpanded\t\tQueue"
+beamSearch(graph, 'S', 'G', 2)
 
