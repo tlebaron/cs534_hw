@@ -250,18 +250,26 @@ def hillClimbing(graph, source, goal):
     return -1
 
 
-def beamSearch(graph, source, goal, limit):
-    queue = [[getNodeDistance(graph, source, goal), source]]
+def getNBests(node_list, N):
+    n_bests = []
+    for node in node_list:
+	n_bests.append(node)
+	if len(n_bests) > N:
+	    #remove worse
+	    worst = n_bests[0]
+	    for i_node in n_bests:
+		if i_node[0] > worst[0]:
+		    worst = i_node
+	    del n_bests[n_bests.index(worst)]
 
+    return n_bests
+
+
+def beamSearch(graph, source, goal, w):
+    queue = [[getNodeDistance(graph, source, goal), source]]
+    size = len(queue[0]) -1
     while len(queue) > 0:
 	print "\t{0}\t\t\t{1}".format(queue[0][1], printQueueCost(queue))
-
-	s_queue = sorted(queue, key = sortGetNodeIndex)[:2]
-	if len(queue)>2 and queue.index(s_queue[0]) > queue.index(s_queue[1]):
-	    queue = s_queue[::-1]
-	else:
-	    queue = s_queue[:]
-
 	if queue[0][1] == goal:
 	    print "\tgoal reached!"
 	    return queue[0]
@@ -269,14 +277,18 @@ def beamSearch(graph, source, goal, limit):
 	    path_to_explore = queue[0][:]
 	    del queue[0]
 	    children_list = getConnectedNodes(graph, path_to_explore[1])
+	    list_new_path = []
 	    for child in children_list:
 		if child[0] not in path_to_explore:
 		    new_path = path_to_explore[:]
 		    new_path.insert(1,child[0])
 		    new_path[0] = getNodeDistance(graph, child[0], goal)
-
 		    queue.append(new_path)
-	
+
+	if size != len(queue[0])-1:
+	    size = len(queue[0])-1
+	    queue = getNBests(queue[:], w)
+
     return -1
 
 
@@ -312,9 +324,13 @@ greedySearch(graph, 'S', 'G')
 print "\t## A* search ##"
 print "\tExpanded\t\tQueue"
 aStarSearch(graph, 'S', 'G')
-'''
 
 print "\t## Hill climbing ##"
 print "\tExpanded\t\tQueue"
 hillClimbing(graph, 'S', 'G')
+'''
+
+print "\t## Beam seach ##"
+print "\tExpanded\t\tQueue"
+beamSearch(graph, 'S', 'G',2)
 
