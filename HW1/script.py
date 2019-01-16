@@ -225,6 +225,31 @@ def aStarSearch(graph, source, goal):
     return -1
 
 
+def hillClimbing(graph, source, goal):
+    queue = [[getNodeDistance(graph, source, goal), source]]
+
+    while len(queue) > 0:
+	print "\t{0}\t\t\t{1}".format(queue[0][1], printQueueCost(queue))
+	if queue[0][1] == goal:
+	    print "\tgoal reached!"
+	    return queue[0]
+	else:
+	    path_to_explore = queue[0][:]
+	    del queue[0]
+	    children_list = getConnectedNodes(graph, path_to_explore[1])
+	    t_queue = []
+	    for child in children_list:
+		if child[0] not in path_to_explore:
+		    new_path = path_to_explore[:]
+		    new_path.insert(1,child[0])
+		    new_path[0] = getNodeDistance(graph, child[0], goal)
+		    t_queue.append(new_path)
+	    t_queue = sorted(t_queue, key=sortGetNodeIndex)
+	    queue.insert(0,t_queue[0])
+	
+    return -1
+
+
 def beamSearch(graph, source, goal, limit):
     queue = [[getNodeDistance(graph, source, goal), source]]
 
@@ -289,7 +314,7 @@ print "\tExpanded\t\tQueue"
 aStarSearch(graph, 'S', 'G')
 '''
 
-print "\t## Beam search ##"
+print "\t## Hill climbing ##"
 print "\tExpanded\t\tQueue"
-beamSearch(graph, 'S', 'G', 2)
+hillClimbing(graph, 'S', 'G')
 
