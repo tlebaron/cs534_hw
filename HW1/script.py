@@ -292,6 +292,8 @@ def beamSearch(graph, source, goal, w):
     return -1
 
 
+
+
 f = open("input2.txt", "r")
 graph = createGraph(f)
 
