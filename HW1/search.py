@@ -1,4 +1,5 @@
 from copy import deepcopy
+import sys
 
 class Node:
 
@@ -117,14 +118,14 @@ class Queue:
 	# param = 1 for cost so far
 	# param = 2 for heuristic
 	# param = 3 for cost so far + heuristic
-	self.path_list = sorted(self.path_list, key = Path.getFirstNodeName)
 	self.path_list = sorted(self.path_list, key = Path.getLength)
+	self.path_list = sorted(self.path_list, key = Path.getFirstNodeName)
 	if param == 1:
 	    self.path_list = sorted(self.path_list, key = Path.getTotalCost)
 	if param == 2:
 	    self.path_list = sorted(self.path_list, key = Path.getFinalHeuristic)
 	if param == 3:
-	    self.path_list = sorted(self.path_list, key = Path.getFinalHeuristic)
+	    self.path_list = sorted(self.path_list, key = Path.getSumCostHeuristic)
 
 class Problem:
 
@@ -347,12 +348,12 @@ def General_Search(problem, search_method):
     while True:
 	if len(queue.path_list) == 0:
 	    return -1
-	queue.printQueue(graph, search_method)
+	queue.printQueue(problem.graph, search_method)
 	[current_node, current_path] = queue.getNodeToExpand()
 	if current_node.isNode(problem.goal):
 	    return current_node
 
-	opened_nodes = expand(graph, current_node, current_path)
+	opened_nodes = expand(problem.graph, current_node, current_path)
 	queue = reorderQueue[search_method](queue, opened_nodes, current_path, problem.param)
 
 
@@ -362,7 +363,8 @@ def depthFirstSearch(problem):
 def breadthFirstSearch(problem):
     return General_Search(problem, 2)
 
-def depthLimitedSearch(problem):
+def depthLimitedSearch(problem, p = 2):
+    problem.param = [p]
     return General_Search(problem, 3)
 
 def iterativeSearch(problem):
@@ -371,8 +373,8 @@ def iterativeSearch(problem):
     counter = 0
     while True:
 	problem.param = [counter]
-	res = depthLimitedSearch(problem)
-	if res == goal:
+	res = depthLimitedSearch(problem, counter)
+	if res == problem.goal:
 	    return res
 	else:
 	    counter += 1
@@ -390,14 +392,61 @@ def aStarSearch(problem):
 def hillClimbingSearch(problem):
     return General_Search(problem, 8)
 
-def beamSearch(problem):
-    problem.param = [2]
+def beamSearch(problem, p = 2):
+    problem.param = [p]
     return General_Search(problem, 9)
 
 
-f = open("input2.txt", "r")
-graph = createGraph(f)
-goal = graph.getNodeByName('G')
-source = graph.getNodeByName('S')
-if beamSearch(Problem(graph, source, goal, 2)) == goal:
-    print "\tgoal reached!"
+def main():
+    if len(sys.argv) != 2:
+	print "Usage: python searchScript.py {input file} [-o {output file}]"
+	return
+
+    try:
+	f = open(sys.argv[1], "r")
+    except Exception:
+	pass
+
+    graph = createGraph(f)
+    goal = graph.getNodeByName('G')
+    source = graph.getNodeByName('S')
+
+    print "\nDepth first search"
+    if depthFirstSearch(Problem(graph, source, goal)) == goal:
+	print "\tgoal reached!"
+
+    print "\nBreadth first search"
+    if breadthFirstSearch(Problem(graph, source, goal)) == goal:
+	print "\tgoal reached!"
+
+    print "\nDepth limited search"
+    if depthLimitedSearch(Problem(graph, source, goal,), 2) == goal:
+	print "\tgoal reached!"
+
+    print "\nIterative search"
+    if iterativeSearch(Problem(graph, source, goal)) == goal:
+	print "\tgoal reached!"
+
+    print "\nUniform search"
+    if uniformSearch(Problem(graph, source, goal)) == goal:
+	print "\tgoal reached!"
+
+    print "\nGreedy search"
+    if greedySearch(Problem(graph, source, goal)) == goal:
+	print "\tgoal reached!"
+
+    print "\nA* search"
+    if aStarSearch(Problem(graph, source, goal)) == goal:
+	print "\tgoal reached!"
+
+    print "\nHill climbing search"
+    if hillClimbingSearch(Problem(graph, source, goal)) == goal:
+	print "\tgoal reached!"
+
+    print "\nBeam search"
+    if beamSearch(Problem(graph, source, goal), 2) == goal:
+	print "\tgoal reached!"
+
+
+if __name__ == '__main__':
+    main()
