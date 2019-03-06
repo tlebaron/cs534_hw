@@ -120,6 +120,8 @@ class Graph:
 	binaryNotEqual = []
 	binaryNotSimultaneous = []
 
+	solution = []
+
 	constraints = [uniform, unaryInclusive, unaryExclusive, binaryEqual, binaryNotEqual, binaryNotSimultaneous]
 
 	def __str__(self):
@@ -148,6 +150,7 @@ class Graph:
 			self.variables.append(Variable(var_args))
 		for val in list_values:
 			self.values.append(Value(val))
+		self.solution = [None]*len(list_variables)
 
 
 		self.uniform.append(Constraint(self, 0, self.variables, constraints_deadline))
@@ -218,9 +221,49 @@ class Graph:
 		# return the variable with the minimum remaining value
 		# if tie, select the one with the most constraints
 
+		minRemainingValues = self.minRemainingValues(self.selectRemainingValues())
+
+		if len(minRemainingValues) == 1:
+			return minRemainingValues[0]
+
+		# minRemainingValues is a set of [var, possibleValues]
+		# decide between them with the degree heuristic: the most constraint var goes first.
+		# simply sort by number of time the variable is present in a binary constraint
+
+		numberOfConstraints = [0]*len(minRemainingValues)
+		for i, [var, minRemVal] in enumerate(minRemainingValues):
+			for constraintType in self.constraints[3:]: #TODO: change if there is more than 3 non binary constraints!
+				for constraint in constraintType:
+					if var in constraint.variables:
+						numberOfConstraints[i] += 1
+
+		return minRemainingValues[numberOfConstraints.index(max(numberOfConstraints))][0]
+
+	def minRemainingValues(self, remainingValues):
+		numberRemainingValues = [sum(x) for x in remainingValues]
+		minRemainingValues = [[False, len(self.values)+1]]
+		for i in range(len(numberRemainingValues)):
+			if self.solution[i] != None: # if we already found a solution for the variable i, it must not be added
+											# TODO: too much dependencies, should use dict instead of list
+											# this in solution verification should be in selectRemainingValues()
+				continue
+			if numberRemainingValues[i] < minRemainingValues[0][1]:
+				minRemainingValues = [[self.variables[i], numberRemainingValues[i]]]
+			elif numberRemainingValues[i] == minRemainingValues[0][1]:
+				minRemainingValues.append([self.variables[i], numberRemainingValues[i]])
+
+		return minRemainingValues
+
+	def selectRemainingValues(self, additionalConstraints = []):
+
+		# return the remaining values for each variable with the up to date constraints
+		# can send additional constraints, which will not be stored in the self.constraints variable
+
 		remainingValues = [[1 for x in range(len(self.values))] for y in range(len(self.variables))]
-		for list_const in self.constraints:
-			if list_const[0].type < 10:
+
+
+		for list_const in self.constraints + [additionalConstraints]:
+			if len(list_const) == 0 or list_const[0].type < 10:
 				continue
 
 			for const in list_const:
@@ -246,29 +289,22 @@ class Graph:
 						remainingValues[varIndex1][i] = remainingValues[varIndex1][i] and remaining1
 						remainingValues[varIndex2][i] = remainingValues[varIndex2][i] and remaining2
 
-		numberRemainingValues = [sum(x) for x in remainingValues]
-		minRemainingValues = [[False, len(self.values)+1]]
-		for i in range(len(numberRemainingValues)):
-			if numberRemainingValues[i] < minRemainingValues[0][1]:
-				minRemainingValues = [[self.variables[i], numberRemainingValues[i]]]
-			elif numberRemainingValues[i] == minRemainingValues[0][1]:
-				minRemainingValues.append([self.variables[i], numberRemainingValues[i]])
+		return remainingValues
 
-		if len(minRemainingValues) == 1:
-			return minRemainingValues[0]
+	def selectValue(self, variable):
+		# least constraining value heuristic:
+		# for all the value possible for this variable, count the number of possible values for the other variables
+		# and pick the one with the highest minimum
 
-		# minRemainingValues is a set of [var, possibleValues]
-		# decide between them with the degree heuristic: the most constraint var goes first.
-		# simply sort by number of time the variable is present in a constraint
+		remainingValues = self.selectRemainingValues()
+		minPossibleValues = [-1]*len(self.values)
+		for i, val in enumerate(self.values):
+			if remainingValues[self.variables.index(variable)] == 0:
+				continue
+			minPossibleValues[i] = self.minRemainingValues(
+									self.selectRemainingValues([Constraint(self, 11, [variable], [val])]))[0][1]
 
-		numberOfConstraints = [0]*len(minRemainingValues)
-		for i, [var, minRemVal] in enumerate(minRemainingValues):
-			for constraintType in self.constraints:
-				for constraint in constraintType:
-					if var in constraint.variables:
-						numberOfConstraints[i] += 1
-
-		return minRemainingValues[numberOfConstraints.index(max(numberOfConstraints))][0]
+		return self.values[minPossibleValues.index(max(minPossibleValues))]
 
 
 
@@ -300,7 +336,7 @@ def main():
 					input_list[6], input_list[7])
 
 
-	print graph.selectVariable()
+	print graph.selectValue(graph.selectVariable())
 
 if __name__ == '__main__':
 	main()
