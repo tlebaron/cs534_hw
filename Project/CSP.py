@@ -1,5 +1,6 @@
 import sys
 import re
+from copy import deepcopy
 
 class Variable:
 
@@ -9,6 +10,14 @@ class Variable:
 
 	def __repr__(self):
 		return "Variable({0},{1})".format(self.name, self.args)
+
+	def assignedTo(self, assignment):
+		isAssigned = False
+		for assignedVariable in assignment:
+			if assignedVariable[0] == self:
+				isAssigned = assignedVariable[1]
+				break
+		return isAssigned
 		
 
 class Value:
@@ -98,6 +107,10 @@ class Constraint:
 	def updateBinaryConstraint(self, graph, unaryConstraint):
 		assert self.type in [21, 22, 23], "Constraint updateBinaryConstraint: constraint type not in whitelist"
 
+
+		if len(unaryConstraint.variables) == 0:
+			return
+
 		if unaryConstraint.variables[0] == self.variables[0]:
 			for i in range(len(graph.values)):
 				for j in range(len(graph.values)):
@@ -107,6 +120,64 @@ class Constraint:
 			for i in range(len(graph.values)):
 				for j in range(len(graph.values)):
 					self.values[i][j] = (self.values[i][j] and unaryConstraint.values[j])
+
+
+	def updateRemainingValues(self, graph, variable, remainingValues, assignment):
+		#input: graph, Variable, [1, 1, ...], asssignment([Variable, Value])
+		#output: modify remainingValues to be consistent with self constraint and assignment
+
+		if variable not in self.variables:
+			return
+
+		assign = variable.assignedTo(assignment)
+		if assign:
+			return
+
+		if self.type < 10:
+			return
+		elif self.type < 20:
+			for i in range(len(remainingValues)):
+				remainingValues[i] = remainingValues[i] and self.values[i]
+		else:
+			otherVariableIsAssigned = False
+			if variable == self.variables[0]:
+				currentVar = self.variables[0]
+				otherVar = self.variables[1]
+			else:
+				currentVar = self.variables[1]
+				otherVar = self.variables[0]
+			otherVal = otherVar.assignedTo(assignment)
+			if otherVal != False:
+				otherVariableIsAssigned = True
+
+			if not otherVariableIsAssigned:
+				if currentVar == self.variables[0]:
+					for i in range(len(self.values)):
+						remain = 0
+						for j in range(len(self.values[0])):
+							if self.values[i][j] == 1:
+								remain = 1
+								break
+						remainingValues[i] = remainingValues[i] and remain
+				else:
+					for i in range(len(self.values)):
+						remain = 0
+						for j in range(len(self.values[0])):
+							if self.values[j][i] == 1:
+								remain = 1
+								break
+						remainingValues[i] = remainingValues[i] and remain
+			else:
+				if currentVar == self.variables[0]:
+					for i in range(len(self.values)):
+						remainingValues[i] = remainingValues[i] and self.values[i][graph.values.index(otherVal)]
+				else:
+					for i in range(len(self.values)):
+						remainingValues[i] = remainingValues[i] and self.values[graph.values.index(otherVal)][i]
+
+		#print "updated remaining values"
+		#print remainingValues
+
 
 class Graph:
 
@@ -256,126 +327,106 @@ class Graph:
 
 
 	def selectVariable(self, assignment):
-		# assignment contains variable already assigned
-		# return the variable to expand in order of expansion
-		# return the variable with the minimum remaining value first
-		# if tie, select the one with the most constraints
-
-		minRemainingValues = self.minRemainingValues(self.selectRemainingValues(), assignment)
+		# input: assignment
+		# output: [ [var, number of remaining values, number of binary constraints] ]
+		# output is sorted by [1], tie break with [2]
+		# only containts var not assigned 
+		minRemainingValues = self.countRemainingValues(self.selectRemainingValues(assignment), assignment)
 
 		self.maxConstraintedValues(minRemainingValues, assignment)
-		# remainingValue = [[var, #possible values, #constraints], ...]
 
-		#print sorted(sorted(minRemainingValues, key = lambda x: x[2]), key = lambda y: y[1])
-
-		return sorted(sorted(minRemainingValues, key = lambda x: x[2], reverse = True), key = lambda y: y[1])
-
-		# minRemainingValues is a set of [var, possibleValues]
-		# decide between them with the degree heuristic: the most constraint var goes first.
-		# simply sort by number of time the variable is present in a binary constraint
-		"""
-		numberOfConstraints = [0]*len(minRemainingValues)
-		for i, [var, minRemVal] in enumerate(minRemainingValues):
-			for constraintType in self.constraints[3:]: #TODO: change if there is more than 3 non binary constraints!
-				for constraint in constraintType:
-					if var in constraint.variables:
-						numberOfConstraints[i] += 1
-		
-		return minRemainingValues[numberOfConstraints.index(max(numberOfConstraints))][0]
-		"""
+		variableQueue = sorted(sorted(minRemainingValues, key = lambda x: x[2], reverse = True), key = lambda y: y[1])
+		return variableQueue
 
 	def maxConstraintedValues(self, setVariables, assignment):
+		# input: setVariables([ [var, number of remaining values] ])
+		# input: assignment([Variable, Value])
+		# output: [ [var, number of remaining values, number of binary constraints with var] ]
+
 		for i in range(len(setVariables)):
 			setVariables[i].append(-1)
 		for i, [var, minRemVal, init] in enumerate(setVariables):
 			numberOfConstraints = 0
-			for constraintType in self.constraints[3:]: #TODO: change if there is more than 3 non binary constraints!
-				for constraint in constraintType:
+			for list_constraint in self.constraints:
+				for constraint in list_constraint:
+					if constraint.type < 20:
+						break
 					if var in constraint.variables:
 						numberOfConstraints += 1
 			setVariables[i][2] = numberOfConstraints
 		return setVariables
 
 
-	def minRemainingValues(self, remainingValues, assignment):
-		numberRemainingValues = [sum(x) for x in remainingValues]
-		minRemainingValues = []
+	def countRemainingValues(self, remainingValues, assignment):
+		# input: remainingValues([ [var, [1,0,...]] ]) for var not assigned
+		# input: assignment([Variable, Value])
+		# output: [ [var, number of remaining values] ]
+		numberRemainingValues = []
+		for [var, rV] in remainingValues:
+			numberRemainingValues.append([var, sum(rV)])
+		return numberRemainingValues
 
-		for i in range(len(numberRemainingValues)):
-			isAssigned = False
-			for assignedVariable in assignment:
-				if assignedVariable[0] == self.variables[i]:
-					isAssigned = True
-					break
+	def selectRemainingValues(self, assignment):
+		# input: assignment([Variable, Value])
+		# output: [ [var, [1,0,...]] ] for variable not assigned.
 
-			if not isAssigned:
-				minRemainingValues.append([self.variables[i], numberRemainingValues[i]])
-			"""
-			if numberRemainingValues[i] < minRemainingValues[0][1]:
-				minRemainingValues = [[self.variables[i], numberRemainingValues[i]]]
-			elif numberRemainingValues[i] == minRemainingValues[0][1]:
-				minRemainingValues.append([self.variables[i], numberRemainingValues[i]])
-			"""
+		remainingValues = []
+		for var in self.variables:
+			if not var.assignedTo(assignment):
+				remainingValues.append([var, [1]*len(self.values)])
 
-		return minRemainingValues
-
-	def selectRemainingValues(self, additionalConstraints = []):
-
-		# return the remaining values for each variable with the up to date constraints
-		# the additional constraint act as a single unary inc constraint to simulate the assignment of the variable
-
-		remainingValues = [[1 for x in range(len(self.values))] for y in range(len(self.variables))]
-
-
-		for list_const in self.constraints + [additionalConstraints]:
+		for list_const in self.constraints:
 			if len(list_const) == 0 or list_const[0].type < 10:
 				continue
 
 			for const in list_const:
-				if const.type < 20:
-					varIndex = self.variables.index(const.variables[0])
-					for i in range(len(self.values)):
-						remainingValues[varIndex][i] = remainingValues[varIndex][i] and const.values[i]
-				else:
-					varIndex1 = self.variables.index(const.variables[0])
-					varIndex2 = self.variables.index(const.variables[1])
-					for i in range(len(self.values)):
-						remaining1 = 0
-						for j in range(len(self.values)):
-							if const.values[i][j] == 1:
-								remaining1 = 1
-								break
-						remaining2 = 0
-						for j in range(len(self.values)):
-							if const.values[j][i] == 1:
-								remaining2 = 1
-								break
+				for [var, currentRemainingValues] in remainingValues:
+					const.updateRemainingValues(self, var, currentRemainingValues, assignment)
 
-						remainingValues[varIndex1][i] = remainingValues[varIndex1][i] and remaining1
-						remainingValues[varIndex2][i] = remainingValues[varIndex2][i] and remaining2
-
-		#print "remainingValues {0}".format(remainingValues)
 
 		return remainingValues
 
 	def selectValue(self, variable, assignment):
+		# input: Variable, assignment([Variable, Value])
+		# output: [Valeur, Valeur, ...] in the right order
+
 		# least constraining value heuristic:
 		# sort the values in order of increment constraints
-		# for all the value possible for this variable, count the number of possible values for the other variables
-		# and pick the one with the highest minimum
+		
+		# for each value possible:
+		#	assume variable is assigned to value
+		#	for all other variable not assigned:
+		#		count the number of values the other variable can still have
+		#		take the min between the other variables
+		#	take the value so that the min is the highest
 
 
-		numberRemainingValues = [-1]*len(self.variables)
-		minNumberRemainingValues = []
-		for i, val in enumerate(self.possibleAssignments[self.variables.index(variable)][1]):
-			minNumberRemainingValues.append([val])
-			minNumberRemainingValues[-1].append(self.minRemainingValues(
-												self.selectRemainingValues([Constraint(self, 11, [variable], [val])]), 
-												assignment
-												)[0][1]
-												)
+		valueQueue = []
 
-		return sorted(minNumberRemainingValues,key = lambda x: x[1])
+		# if it is the last variable to test, add all values, order not important
+		if len(assignment) == len(self.variables)-1:
+			for value in self.values:
+				valueQueue.append([value, len(self.values)+1])
+			return valueQueue
+
+
+		for value in self.values:
+			assignment.append([variable, value])
+			valueAssignmentEffect = []
+			#for this value, compute the number of remaining values and store the min
+			for [var, nbRemainningVal] in self.countRemainingValues(self.selectRemainingValues(assignment), assignment):
+				if var.assignedTo(assignment) or var == variable:
+					continue
+				else:
+					valueAssignmentEffect.append([var, nbRemainningVal])
+
+			valueQueue.append([value, sorted(valueAssignmentEffect, key = lambda x: x[1])[0][1]])
+			assignment.remove([variable, value])
+
+		assert not variable.assignedTo(assignment)
+		return sorted(valueQueue, key = lambda x: x[1], reverse = True)
+
+
 
 	def consistentAssignment(self, variable, value, assignment):
 
@@ -388,30 +439,65 @@ class Graph:
 				continue
 
 			for const in list_const:
+
+				#print const
+
 				if variable not in const.variables:
 					continue
-				if list_const[0].type == 0:
+				if const.type == 0:
 					length = 0
 					for assign in assignment:
 						if assign[1] == value:
 							length += int(assign[0].args) 						#TODO change if there is no deadline constraint!!
-					return int(const.values[0]) > length + int(variable.args)
-				if const.type < 20:
-					return const.values[valIndex] == 1
+					if not int(const.values[0]) > length + int(variable.args):
+						#print "Non consistency", variable, value, assignment, const
+						return False
+				elif const.type < 20:
+					if const.values[valIndex] != 1:
+						#print "Non consistency", variable, value, assignment, const
+						return False
+				
 				else:
+					otherVariableIsAssigned = False
 					if variable == const.variables[0]:
-						for j in range(len(const.values[0])):
-							if const.values[valIndex][j] == 1:
-								return True
-						return False
+						currentVar = const.variables[0]
+						otherVar = const.variables[1]
+					else:
+						currentVar = const.variables[1]
+						otherVar = const.variables[0]
+					otherVal = otherVar.assignedTo(assignment)
+					if otherVal != False:
+						otherVariableIsAssigned = True
 
-					if variable == const.variables[0]:
-						for j in range(len(const.values)):
-							if const.values[j][valIndex] == 1:
-								return True
-						return False
 
+					if not otherVariableIsAssigned:
+						consistent = False
+						if variable == self.variables[0]:
+							for i in range(len(const.values)):
+								if const.values[valIndex][i] == 1:
+									consistent = True
+						else:
+							for j in range(len(const.values)):
+								if const.values[j][valIndex] == 1:
+									consistent = True
+						#if not consistent:
+							#print "Non consistency", variable, value, assignment, const, otherVal
+						return consistent
+					else:
+						if variable == self.variables[0]:
+							consistent = const.values[valIndex][self.values.index(otherVal)] == 1
+							#if not consistent:
+								#print "Non consistency", variable, value, assignment, const
+							return consistent
+						else:
+							consistent = const.values[self.values.index(otherVal)][valIndex] == 1
+							#if not consistent:
+								#print "Non consistency", variable, value, assignment, const
+							return consistent
 		return True
+
+
+
 
 def removeInconsistentValue(graph, arc):
 	# arc = [value assigned, value linked, binary constraint, values in order in constraint]
@@ -475,18 +561,18 @@ def recursiveBacktracking(assignment, graph):
 		return assignment
 
 	for [var, numRemainVal, numConstr] in graph.selectVariable(assignment):
-		print "variable selected: {0}".format(var)
-		for [val, minNumb] in graph.selectValue(var, assignment):
-			print "test with value {0}".format(val)
+		print "\nvariable selected: {0}".format(var)
+		for [val, minRemVal] in graph.selectValue(var, assignment):
+			print "-test with value {0}".format(val)
 			if graph.consistentAssignment(var, val, assignment):
-				print "{0} assigned {1} is consistent, test the children".format(var, val)
+				print "--{0} assigned {1} is consistent, test the children".format(var, val)
 				assignment.append([var, val])
 				result = recursiveBacktracking(assignment, graph)
 				if result != False:
 					return result
 				assignment.remove([var, val])
-				print "no solution with {0} assigned to {1}".format(var, val)
-			print "{0} assigned {1} is not consistent, test next variable".format(var, val)
+				print "--no solution with {0} assigned to {1}".format(var, val)
+			print "-{0} assigned {1} is not consistent, test next variable".format(var, val)
 		return False
 
 
