@@ -175,6 +175,7 @@ class Constraint:
 					for i in range(len(self.values)):
 						remainingValues[i] = remainingValues[i] and self.values[graph.values.index(otherVal)][i]
 
+
 		#print "updated remaining values"
 		#print remainingValues
 
@@ -242,6 +243,8 @@ class Graph:
 					binary_constraint.updateBinaryConstraint(self, unary_constraint)
 
 		self.initializePossibleAssignments()
+
+		#print "initial possible assignments: {0}".format(self.possibleAssignments)
 
 
 	def addUnaryConstraint(self,type_of_constraint, list_constraints):
@@ -386,7 +389,7 @@ class Graph:
 
 		return remainingValues
 
-	def selectValue(self, variable, assignment):
+	def selectValue(self, variable, assignment,):
 		# input: Variable, assignment([Variable, Value])
 		# output: [Valeur, Valeur, ...] in the right order
 
@@ -403,14 +406,16 @@ class Graph:
 
 		valueQueue = []
 
+		possibleValues = self.possibleAssignments[self.variables.index(variable)][1]
+
 		# if it is the last variable to test, add all values, order not important
 		if len(assignment) == len(self.variables)-1:
-			for value in self.values:
+			for value in possibleValues:
 				valueQueue.append([value, len(self.values)+1])
 			return valueQueue
 
 
-		for value in self.values:
+		for value in possibleValues:
 			assignment.append([variable, value])
 			valueAssignmentEffect = []
 			#for this value, compute the number of remaining values and store the min
@@ -499,58 +504,90 @@ class Graph:
 
 
 
-def removeInconsistentValue(graph, arc):
-	# arc = [value assigned, value linked, binary constraint, values in order in constraint]
+def removeInconsistentValue(graph, arc, assignment):
+	# input: arc = [value assigned, value linked, binary constraint]
+
+	removedAssignments = []
 	removed = False
-	for possibleAssignment in graph.possibleAssignments:
-		if arc[0] == possibleAssignment[0]:
-			domain1 = possibleAssignment[1]
-			break
+	if arc[0].assignedTo(assignment):
+		domain1 = [arc[0].assignedTo(assignment)]
+	else:
+		for possibleAssignment in graph.possibleAssignments:
+			if arc[0] == possibleAssignment[0]:
+				domain1 = possibleAssignment[1]
+				break
 	for possibleAssignment in graph.possibleAssignments:
 		if arc[1] == possibleAssignment[0]:
 			domain2 = possibleAssignment[1]
 			break
 
-	for possibleValue1 in domain1:
+	"""
+	print "arguments of removeInconsistentValue: "
+	print arc, assignment
+	print "possible assignments: "
+	print domain1, domain2
+	"""
+	for possibleValue2 in domain2:
+		#print "can var {0} have value {1}?".format(arc[1], possibleValue2)
 		satisfied = False
-		for possibleValue2 in domain2:
-			#if Value1 and Value2 satisfy the constraint then  turn satisfied to True
-			if arc[3] == 0:
-				if constraint[graph.values.index(possibleValue1)][graph.values.index(possibleValue1)] == 1:
+		for possibleValue1 in domain1:
+			if arc[1] == arc[2].variables[1]:
+				if arc[2].values[graph.values.index(possibleValue1)][graph.values.index(possibleValue2)] == 1:
 					satisfied = True
 					break
-			if arc[3] == 1:
-				if constraint[graph.values.index(possibleValue2)][graph.values.index(possibleValue1)] == 1:
+			else:
+				if arc[2].values[graph.values.index(possibleValue2)][graph.values.index(possibleValue1)] == 1:
 					satisfied = True
 					break
+
+
 		if not satisfied:
-			domain1.remove(possibleValue1)
+			removedAssignments.append([arc[1], possibleValue2])
+			#domain2.remove(possibleValue2)
 			removed = True
-	return removed
+	for [variable, removedVal] in removedAssignments:
+		domain2.remove(removedVal)
+	return removedAssignments
 
 
-def constraintPropagation(graph, variableAssigned):
+def constraintPropagation(graph, variableAssigned, assignment):
+	# output: return the possible assignments removed by removeInconsistentValue
+	removedPossibleAssignments = []
 	# create the queue of arcs, corresponding to the binary constraints
 	queue = []
+	#print "propagate the assignment of the variable ", variableAssigned, assignment
 	for constraint_list in graph.constraints:
-		if constraint_list[0].type > 19:
+		if len(constraint_list) == 0:
+			continue
+		if constraint_list[0].type > 20:
 			for constraint in constraint_list:
 				if variableAssigned == constraint.variables[0]:
-					queue.append([variableAssigned, constraint.variables[1], constraint, 0])
+					queue.append([variableAssigned, constraint.variables[1], constraint])
 				elif variableAssigned == constraint.variables[1]:
-					queue.append([variableAssigned, constraint.variables[0], constraint, 1])
+					print constraint.variables[0].assignedTo(assignment)
+					queue.append([variableAssigned, constraint.variables[0], constraint])
+
+
 
 	while len(queue) > 0:
+		#print "queue ", queue
 		arc = queue[0]
 		del queue[0]
-		if removedInconsistentValue(graph, arc):
+		removedAssignments = removeInconsistentValue(graph, arc, assignment)
+		if len(removedAssignments) != 0:
+			for assign in removedAssignments:
+				removedPossibleAssignments.append(assign)
 			for constraint_list in graph.constraints:
-				if constraint_list[0].type > 19:
+				if len(constraint_list) == 0:
+					continue
+				if constraint_list[0].type > 20:
 					for constraint in constraint_list:
-						if arc[1] == constraint.variables[0]:
-							queue.append([arc[1], constraint.variables[1], constraint, 0])
-						elif arc[1] == constraint.variables[1]:
-							queue.append([arc[1], constraint.variables[0], constraint, 1])
+						if arc[1] == constraint.variables[0] and not constraint.variables[1].assignedTo(assignment):
+							queue.append([arc[1], constraint.variables[1], constraint])
+						elif arc[1] == constraint.variables[1] and not constraint.variables[0].assignedTo(assignment):
+							queue.append([arc[1], constraint.variables[0], constraint])
+
+	return removedPossibleAssignments
 
 
 def backtrackingSearch(graph):
@@ -562,14 +599,20 @@ def recursiveBacktracking(assignment, graph):
 
 	for [var, numRemainVal, numConstr] in graph.selectVariable(assignment):
 		print "\nvariable selected: {0}".format(var)
+		#print "possible assignments: {0}".format(graph.possibleAssignments)
 		for [val, minRemVal] in graph.selectValue(var, assignment):
 			print "-test with value {0}".format(val)
 			if graph.consistentAssignment(var, val, assignment):
 				print "--{0} assigned {1} is consistent, test the children".format(var, val)
 				assignment.append([var, val])
+				removedAssignments = constraintPropagation(graph, var, assignment)
 				result = recursiveBacktracking(assignment, graph)
 				if result != False:
 					return result
+				for [variableRemoved, valueRemoved] in removedAssignments:
+					for possibleAssign in graph.possibleAssignments:
+						if variableRemoved == possibleAssign[0]:
+							possibleAssign[1].append(valueRemoved)
 				assignment.remove([var, val])
 				print "--no solution with {0} assigned to {1}".format(var, val)
 			print "-{0} assigned {1} is not consistent, test next variable".format(var, val)
