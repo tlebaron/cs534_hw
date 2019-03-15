@@ -543,7 +543,8 @@ def removeInconsistentValue(graph, arc, assignment):
 
 		if not satisfied:
 			removedAssignments.append([arc[1], possibleValue2])
-			#domain2.remove(possibleValue2)
+			print "---because the only possible value(s) for {0} are {1}, then {2} can not have the value {3}".format(
+															arc[0].name, domain1, arc[1].name, possibleValue2.name)
 			removed = True
 	for [variable, removedVal] in removedAssignments:
 		domain2.remove(removedVal)
@@ -555,16 +556,15 @@ def constraintPropagation(graph, variableAssigned, assignment):
 	removedPossibleAssignments = []
 	# create the queue of arcs, corresponding to the binary constraints
 	queue = []
-	#print "propagate the assignment of the variable ", variableAssigned, assignment
+
 	for constraint_list in graph.constraints:
 		if len(constraint_list) == 0:
 			continue
 		if constraint_list[0].type > 20:
 			for constraint in constraint_list:
-				if variableAssigned == constraint.variables[0]:
+				if variableAssigned == constraint.variables[0] and not constraint.variables[1].assignedTo(assignment):
 					queue.append([variableAssigned, constraint.variables[1], constraint])
-				elif variableAssigned == constraint.variables[1]:
-					print constraint.variables[0].assignedTo(assignment)
+				elif variableAssigned == constraint.variables[1] and not constraint.variables[0].assignedTo(assignment):
 					queue.append([variableAssigned, constraint.variables[0], constraint])
 
 
@@ -593,17 +593,29 @@ def constraintPropagation(graph, variableAssigned, assignment):
 def backtrackingSearch(graph):
 	return recursiveBacktracking([], graph)
 
+def printVarValList(varValList):
+	string = "-"
+	for varVal in varValList:
+		string += "{0} ".format(varVal[0].name)
+	print string
+
 def recursiveBacktracking(assignment, graph):
 	if len(assignment) == len(graph.variables):
 		return assignment
 
-	for [var, numRemainVal, numConstr] in graph.selectVariable(assignment):
-		print "\nvariable selected: {0}".format(var)
+	variablesInOrder = graph.selectVariable(assignment)
+	print "\nVariables are ordered like this:"
+	printVarValList(variablesInOrder)
+	for [var, numRemainVal, numConstr] in variablesInOrder:
+		print "\n-Variable selected: {0}".format(var)
 		#print "possible assignments: {0}".format(graph.possibleAssignments)
-		for [val, minRemVal] in graph.selectValue(var, assignment):
-			print "-test with value {0}".format(val)
+		valuesInOrder = graph.selectValue(var, assignment)
+		print "-Values are ordered like this:"
+		printVarValList(valuesInOrder)
+		for [val, minRemVal] in valuesInOrder:
+			print "--test with value {0}".format(val)
 			if graph.consistentAssignment(var, val, assignment):
-				print "--{0} assigned {1} is consistent, test the children".format(var, val)
+				print "---{0} assigned {1} is consistent, test the children".format(var, val)
 				assignment.append([var, val])
 				removedAssignments = constraintPropagation(graph, var, assignment)
 				result = recursiveBacktracking(assignment, graph)
@@ -614,8 +626,8 @@ def recursiveBacktracking(assignment, graph):
 						if variableRemoved == possibleAssign[0]:
 							possibleAssign[1].append(valueRemoved)
 				assignment.remove([var, val])
-				print "--no solution with {0} assigned to {1}".format(var, val)
-			print "-{0} assigned {1} is not consistent, test next variable".format(var, val)
+				print "\n---no solution with {0} assigned to {1}".format(var, val)
+			print "--{0} assigned {1} is not consistent, test next variable".format(var, val)
 		return False
 
 
@@ -653,9 +665,16 @@ def main():
 
 	solution =  backtrackingSearch(graph)
 	if solution:
-		print solution
+		print "\n\nThe algorithm found a solution:\n"
+		lengthPerValue = [0]*len(graph.values)
+		for assignment in solution:
+			print "Variable {0}, length {2} assigned value is {1}".format(assignment[0].name,
+																			assignment[1].name, assignment[0].args)
+			lengthPerValue[graph.values.index(assignment[1])] += int(assignment[0].args)
+		for valueIndex, value in enumerate(graph.values):
+			print "Length of task assigned to processor {0} is {1}".format(value.name, lengthPerValue[valueIndex])
 	else:
-		print "no solution"
+		print "No solution found"
 
 
 if __name__ == '__main__':
