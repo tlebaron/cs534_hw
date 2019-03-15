@@ -1,0 +1,14 @@
+/!\ replace print "" by print("")
+
+Do this one
+-classes
+-categorize the constraints in 3 typess
+-AC3 after each iteration: need modify to allow the backtracking
+	- constraint propagation return the removes possible assignments
+	- backtracking reinsert the removed possible assignment when backtrack 
+
+
+- how to make the bonus:
+	- create a uniform constraint for total price
+	- start at zero. while there is no solution, increment the price
+	- our result

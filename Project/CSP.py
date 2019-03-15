@@ -5,13 +5,15 @@ from copy import deepcopy
 class Variable:
 
 	def __init__(self, list_args):
-		self.name = list_args[0]
-		self.args = list_args[1:]
+		self.name = list_args.split(" ")[0]
+		self.args = list_args.split(" ")[1:]
 
 	def __repr__(self):
 		return "Variable({0},{1})".format(self.name, self.args)
 
 	def assignedTo(self, assignment):
+	# return which variable self is assigned to according to assignment
+	# assume that it is assigned to a unique value if assigned
 		isAssigned = False
 		for assignedVariable in assignment:
 			if assignedVariable[0] == self:
@@ -22,11 +24,16 @@ class Variable:
 
 class Value:
 
+
 	def __init__(self, n):
 		self.name = n
+		self.arguments = []
 
 	def __repr__(self):
-		return "Value({0})".format(self.name)
+		string = "Value({0}".format(self.name)
+		for argument in self.arguments:
+			string += ", {0}".format(argument)
+		return string + ")"
 
 
 class Constraint:
@@ -45,7 +52,7 @@ class Constraint:
 		self.type = type_of_constraint
 		self.variables = list_variables
 
-		if self.type == 0:
+		if self.type < 10:
 			self.values = list_values
 			return
 
@@ -105,6 +112,7 @@ class Constraint:
 
 
 	def updateBinaryConstraint(self, graph, unaryConstraint):
+
 		assert self.type in [21, 22, 23], "Constraint updateBinaryConstraint: constraint type not in whitelist"
 
 
@@ -182,19 +190,7 @@ class Constraint:
 
 class Graph:
 
-	variables = []
-	values = []
 
-	uniform = []
-	unaryInclusive = []
-	unaryExclusive = []
-	binaryEqual = []
-	binaryNotEqual = []
-	binaryNotSimultaneous = []
-
-	possibleAssignments = []
-
-	constraints = [uniform, unaryInclusive, unaryExclusive, binaryEqual, binaryNotEqual, binaryNotSimultaneous]
 
 	def __str__(self):
 		string = "List of variables:\n"
@@ -212,11 +208,27 @@ class Graph:
 		return string
 
 
+
 	# list_variables = [[var1arg1, var1arg2, ...], [var2arg1,...], ...]
 	# list_values = [value1, value2, ...]
-	def __init__(self, list_variables, list_values, constraints_deadline = [], constraints_unary_inclusive = [],
-					constraints_unary_exclusive = [], constraints_binary_equal = [], constraints_binary_not_equal = [],
-					constraints_binary_not_simultaneous = []):
+	def __init__(self, list_variables, list_values, constraints_deadline = [],
+					constraints_unary_inclusive = [], constraints_unary_exclusive = [], constraints_binary_equal = [],
+					constraints_binary_not_equal = [], constraints_binary_not_simultaneous = []):
+
+		self.variables = []
+		self.values = []
+
+		self.uniform = []
+		self.unaryInclusive = []
+		self.unaryExclusive = []
+		self.binaryEqual = []
+		self.binaryNotEqual = []
+		self.binaryNotSimultaneous = []
+
+		self.possibleAssignments = []
+
+		self.constraints = [self.uniform, self.unaryInclusive, self.unaryExclusive, self.binaryEqual, 
+								self.binaryNotEqual, self.binaryNotSimultaneous]
 
 		for var_args in list_variables:
 			self.variables.append(Variable(var_args))
@@ -228,7 +240,7 @@ class Graph:
 				self.possibleAssignments[-1][1].append(val)
 
 
-		self.uniform.append(Constraint(self, 0, self.variables, constraints_deadline))
+		self.uniform.append(Constraint(self, 0, self.variables, int(constraints_deadline[0])))
 
 		self.addUnaryConstraint(0, constraints_unary_inclusive)
 		self.addUnaryConstraint(1, constraints_unary_exclusive)
@@ -245,6 +257,27 @@ class Graph:
 		self.initializePossibleAssignments()
 
 		#print "initial possible assignments: {0}".format(self.possibleAssignments)
+
+	def addMeasureConstraint(self, measure):
+		self.uniform.append(Constraint(self, 1, self.variables, measure))
+
+	def removeMeasureConstraint(self, measure):
+		for uniformConstraint in self.uniform:
+			if uniformConstraint.type == 1 and uniformConstraint.values == measure:
+				self.uniform.remove(uniformConstraint)
+				return
+		print("Couldnt remove {0} from {1}").format(measure, self.uniform)
+		assert False
+
+	def addArgumentsToValues(self, list_arguments):
+	# input: [[argument1, argument2,...], [...]]
+	# assume the arguments are stored in the right order directly
+
+		assert len(list_arguments) == len(self.values)
+
+		for value, args in zip(self.values, list_arguments):
+			for arg in args:
+				value.arguments.append(arg)
 
 
 	def addUnaryConstraint(self,type_of_constraint, list_constraints):
@@ -355,6 +388,9 @@ class Graph:
 					if constraint.type < 20:
 						break
 					if var in constraint.variables:
+						for [otherVar, assignedVal] in assignment:
+							if otherVar in constraint.variables:
+								break
 						numberOfConstraints += 1
 			setVariables[i][2] = numberOfConstraints
 		return setVariables
@@ -453,8 +489,14 @@ class Graph:
 					length = 0
 					for assign in assignment:
 						if assign[1] == value:
-							length += int(assign[0].args) 						#TODO change if there is no deadline constraint!!
-					if not int(const.values[0]) > length + int(variable.args):
+							length += int(assign[0].args[0]) 						#TODO change if type == 0 is not a deadline
+					if not int(const.values) > length + int(variable.args[0]):
+						# "Non consistency", variable, value, assignment, const
+						return False
+				elif const.type == 1:
+					testedAssignment = assignment[:]
+					testedAssignment.append([variable, value])
+					if calculateTotalCost(testedAssignment) > const.values:
 						#print "Non consistency", variable, value, assignment, const
 						return False
 				elif const.type < 20:
@@ -543,8 +585,8 @@ def removeInconsistentValue(graph, arc, assignment):
 
 		if not satisfied:
 			removedAssignments.append([arc[1], possibleValue2])
-			print "---because the only possible value(s) for {0} are {1}, then {2} can not have the value {3}".format(
-															arc[0].name, domain1, arc[1].name, possibleValue2.name)
+			print("---because the only possible value(s) for {0} are {1}, then {2} can not have the value {3}".format(
+																		arc[0].name, domain1, arc[1].name, possibleValue2.name))
 			removed = True
 	for [variable, removedVal] in removedAssignments:
 		domain2.remove(removedVal)
@@ -604,18 +646,18 @@ def recursiveBacktracking(assignment, graph):
 		return assignment
 
 	variablesInOrder = graph.selectVariable(assignment)
-	print "\nVariables are ordered like this:"
+	print("\nVariables are ordered like this:")
 	printVarValList(variablesInOrder)
 	for [var, numRemainVal, numConstr] in variablesInOrder:
-		print "\n-Variable selected: {0}".format(var)
+		print("\n-Variable selected: {0}".format(var))
 		#print "possible assignments: {0}".format(graph.possibleAssignments)
 		valuesInOrder = graph.selectValue(var, assignment)
-		print "-Values are ordered like this:"
+		print("-Values are ordered like this:")
 		printVarValList(valuesInOrder)
 		for [val, minRemVal] in valuesInOrder:
-			print "--test with value {0}".format(val)
+			print("--test with value {0}".format(val))
 			if graph.consistentAssignment(var, val, assignment):
-				print "---{0} assigned {1} is consistent, test the children".format(var, val)
+				print("---{0} assigned {1} is consistent, test the children".format(var, val))
 				assignment.append([var, val])
 				removedAssignments = constraintPropagation(graph, var, assignment)
 				result = recursiveBacktracking(assignment, graph)
@@ -626,27 +668,76 @@ def recursiveBacktracking(assignment, graph):
 						if variableRemoved == possibleAssign[0]:
 							possibleAssign[1].append(valueRemoved)
 				assignment.remove([var, val])
-				print "\n---no solution with {0} assigned to {1}".format(var, val)
-			print "--{0} assigned {1} is not consistent, test next variable".format(var, val)
+				print("\n---no solution with {0} assigned to {1}".format(var, val))
+			print("--{0} assigned {1} is not consistent, test next variable".format(var, val))
 		return False
 
 
 
+def getOptimizedSolution(graph, measureToMinimize):
+#input: graph is a Graph
+#input: measureToMinimize is function used to calculate the measurement to minimize
+#output: False is no solution exist
+#		variable assignment so that the measureToMinimize is at its minimum
+
+	# need to verify that one solution exist before trying to optimize
+	optimizedAssignment = backtrackingSearch(graph)
+	if optimizedAssignment == False:
+		return False
+
+	upperBondMeasure = measureToMinimize(optimizedAssignment)
+	lowerBondMeasure = 0
+	oldUpperBondMeasure = upperBondMeasure
+	oldLowerBondMeasure = lowerBondMeasure
+
+	print("Initial solution : {0}").format(optimizedAssignment)
+	print("optimizationInitial measurement : {0}").format(upperBondMeasure)
+
+	while upperBondMeasure - lowerBondMeasure > 2:
+		testedMeasure = (upperBondMeasure+lowerBondMeasure) / 2
+		graph.addMeasureConstraint(testedMeasure)
+		testedAssignement = backtrackingSearch(graph)
+		graph.removeMeasureConstraint(testedMeasure)
+
+		if testedAssignement != False:
+			optimizedAssignment = testedAssignement
+			upperBondMeasure = testedMeasure
+			print("optimization with {0} assignment measure {1}").format(testedMeasure, calculateTotalCost(testedAssignement))
+			print("optimization found, new bounds are [{0}, {1}]").format(lowerBondMeasure, upperBondMeasure)
+		else:
+			lowerBondMeasure = testedMeasure
+			print("optimization not found, new bounds are [{0}, {1}]").format(lowerBondMeasure, upperBondMeasure)
+
+	graph.addMeasureConstraint(calculateTotalCost(optimizedAssignment)-1)
+	assert backtrackingSearch(graph) == False
+	graph.removeMeasureConstraint(calculateTotalCost(optimizedAssignment)-1)
+
+	return optimizedAssignment
+
+
+def calculateTotalCost(assignment):
+	cost = 0
+	for assign in assignment:
+		cost += int(assign[1].arguments[0])*int(assign[0].args[0])
+	return cost
 
 def main():
-	if len(sys.argv) != 2:
-		print "Usage: python CSP.py {input file}"
+	if len(sys.argv) != 2 and len(sys.argv) != 3:
+		print("Usage: python CSP.py {input file} [optimization input file 2]")
 		return
 
 	try:
-		f = open(sys.argv[1], "r")
+		f1 = open(sys.argv[1], "r")
+
 	except Exception:
 		pass
 
 	lines = []
-	for line in f.readlines():
+	for line in f1.readlines():
 		lines.append(line[:-1])
 
+	f1.close()
+		
 
 	# input list in order [variables, values, deadline constraints, unary inclusive, unary exclusive, binary equals,
 	#						binary not equals, binary not simultaneous]
@@ -657,24 +748,52 @@ def main():
 		else:
 			input_list[-1].append(line)
 
-	print input_list
+
+
+	print(input_list)
 
 	graph = Graph(input_list[0], input_list[1], input_list[2], input_list[3], input_list[4], input_list[5],
 					input_list[6], input_list[7])
 
 
-	solution =  backtrackingSearch(graph)
+
+
+	# add the optimization data if present
+	# /!\ assume that the variable are sorted the same way in both documents and values are second category in input1
+	if len(sys.argv) == 3:
+		try:
+			f2 = open(sys.argv[2], "r")
+
+		except Exception:
+			pass
+
+		linesOptimizationFile = []
+		for line in f2.readlines():
+			linesOptimizationFile.append([line.split(" ")[1][:-1]])
+
+		f2.close()
+
+		graph.addArgumentsToValues(linesOptimizationFile)
+
+
+	if len(sys.argv) == 2:
+		solution =  backtrackingSearch(graph)
+	elif len(sys.argv) == 3:
+		solution = getOptimizedSolution(graph, calculateTotalCost)
 	if solution:
-		print "\n\nThe algorithm found a solution:\n"
+		print("\n\nThe algorithm found a solution:\n")
 		lengthPerValue = [0]*len(graph.values)
 		for assignment in solution:
-			print "Variable {0}, length {2} assigned value is {1}".format(assignment[0].name,
-																			assignment[1].name, assignment[0].args)
-			lengthPerValue[graph.values.index(assignment[1])] += int(assignment[0].args)
+			print("Variable {0}, length {2} assigned value is {1}".format(assignment[0].name,
+																						assignment[1].name, assignment[0].args))
+			lengthPerValue[graph.values.index(assignment[1])] += int(assignment[0].args[0])
 		for valueIndex, value in enumerate(graph.values):
-			print "Length of task assigned to processor {0} is {1}".format(value.name, lengthPerValue[valueIndex])
+			print("Length of task assigned to processor {0} is {1}".format(value.name, lengthPerValue[valueIndex]))
+
+		if len(sys.argv) == 3:
+			print("Total cost of the solution = {0}").format(calculateTotalCost(solution))
 	else:
-		print "No solution found"
+		print("No solution found")
 
 
 if __name__ == '__main__':
